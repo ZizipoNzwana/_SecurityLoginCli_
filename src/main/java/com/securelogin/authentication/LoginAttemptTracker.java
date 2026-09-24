@@ -21,4 +21,24 @@ public final class LoginAttemptTracker {
         return state != null && state.lockedUntil() != null && Instant.now().isBefore(state.lockedUntil());
     }
 
+    public long secondsUntilUnlocked(String username) {
+        State state = attempts.get(username);
+        if (state == null || state.lockedUntil() == null) {
+            return 0;
+        }
+        long remaining = Instant.now().until(state.lockedUntil(), ChronoUnit.SECONDS);
+        return Math.max(remaining, 0);
+    }
+
+    public void recordFailure(String username) {
+        attempts.compute(username, (name, current) -> {
+            int failures = (current == null ? 0 : current.failedAttempts()) + 1;
+            Instant lockUntil = failures >= MAX_ATTEMPTS ? Instant.now().plusSeconds(LOCKOUT_SECONDS) : null;
+            return new State(failures, lockUntil);
+        });
+    }
+
+    public void recordSuccess(String username) {
+        attempts.remove(username);
+    }
 }
