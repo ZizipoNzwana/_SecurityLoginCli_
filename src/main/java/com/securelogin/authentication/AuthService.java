@@ -60,4 +60,38 @@ public final class AuthService {
         }
     }
 
+    public Result login(String username, char[] password) {
+        if (attemptTracker.isLocked(username)) {
+            return Result.fail("Too many failed attempts. Try again in "
+                    + attemptTracker.secondsUntilUnlocked(username) + "s.");
+        }
+        try {
+            Optional<UserAccount> account = database.findByUsername(username);
+
+            byte[] hashToCheck = account.map(UserAccount::passwordHash).orElse(DUMMY_HASH);
+            byte[] saltToUse = account.map(UserAccount::salt).orElse(DUMMY_SALT);
+            boolean passwordMatches = hasher.verify(password, hashToCheck, saltToUse);
+            boolean valid = account.isPresent() && passwordMatches;
+
+            if (valid) {
+                attemptTracker.recordSuccess(username);
+                return Result.ok("Welcome back, " + username + ".");
+            }
+            attemptTracker.recordFailure(username);
+            return Result.fail("Invalid username or password.");
+        } catch (SQLException e) {
+            return Result.fail("Login failed: " + e.getMessage());
+        }
+    }
+
+    private List<String> validate(String username, char[] password) {
+        List<String> errors = new ArrayList<>();
+        if (username == null || !USERNAME_PATTERN.matcher(username).matches()) {
+            errors.add("Username must be 3-32 characters: letters, numbers, '.' or '_' only.");
+        }
+        if (password == null || password.length < MIN_PASSWORD_LENGTH) {
+            errors.add("Password must be at least " + MIN_PASSWORD_LENGTH + " characters.");
+        }
+        return errors;
+    }
 }
